@@ -15,6 +15,7 @@ import subprocess
 import sys
 import re
 import os
+import subprocess
 
 prefix = "BPF-PREFIX"
 
@@ -91,7 +92,14 @@ def getMergedBranches(base, source):
             parents = re.split('\s',commits)
             parents.pop(0)
             for parent in parents:
-                name = run(['git', 'name-rev', parent, '--name-only'])
+            	newparent = parent[0:7]
+                
+            	cmd = "git reflog show --all | grep "  + newparent
+                print cmd
+                ps = subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+                output = ps.communicate()[0]
+                name = re.search('.*refs/heads/(.*)@.*', output).group(1)
+
                 alt_base = run(['git', 'name-rev', base, '--name-only'])
                 if not source in name and not alt_base in name and not re.match('remote\/\w+\/HEAD', name):
                     m = re.search('(.*)~.*', name)
@@ -133,6 +141,9 @@ def preFillRerere(branches):
         else:
             for commits in merges.split('\n'):
                 parents = re.split('\s',commits)
+                
+                # Alex: Commit on integration branch is the result of a commit
+                # if it has at least 2 parents
                 if len(parents) > 2:
                     commit = parents[0]
                     parent1 = parents[1]
@@ -202,7 +213,7 @@ def terminate(msg=""):
 # Check if we are in the root of the GIT repository
 if not os.path.exists(".git"):
     terminate('This script can only be run in the GIT root directory.')
-
+    
 if not args.source:
   args.source = getCurrentRef()
   print "No source branch specified, using current branch '%s'." % args.source
@@ -238,12 +249,14 @@ if args.branch != args.source and branchExists(args.branch):
 
 # Check if we can pre-fill the rerere cache
 if args.rerere_cache:
-    preFillRerere(args.source)
+	preFillRerere(args.source)
 
 print "1. Processing branch '%s' for merge-commits..." % args.source
 
 # Get a list of merged branches
+print "start: Getting a list of merged branches"
 branches = getMergedBranches(args.base, args.source)
+print "end: Getting a list of merged branches"
 
 if not branches:
     terminate("No feature branches detected, '%s' matches '%s'." % (args.source, args.base))
